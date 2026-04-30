@@ -8,7 +8,8 @@ set -Eeuo pipefail
 # Starts this project's containers from backend/docker-compose.yml.
 
 REPO_SSH="git@github.com:turntabletickets/turntable.git"
-REPO_DIR="${HOME}/projects/turntable"
+PROJECTS_DIR="${HOME}/projects"
+REPO_DIR="${PROJECTS_DIR}/turntable"
 NODE_VERSION="22"
 HOSTS_LINE="127.0.0.1 laughfactory.turntabletix jazztx.turntabletix chucklehut.turntabletix"
 
@@ -41,10 +42,10 @@ check_docker_ready() {
 }
 
 clone_or_update_repo() {
-  mkdir -p "$(dirname "$REPO_DIR")"
+  mkdir -p "$PROJECTS_DIR"
 
   if [[ -d "$REPO_DIR/.git" ]]; then
-    log "Repo already exists. Verifying remote and fetching latest refs."
+    log "Repo already exists at $REPO_DIR. Fetching latest refs."
     git -C "$REPO_DIR" remote get-url origin >/dev/null 2>&1 || fail "Existing repo has no origin: $REPO_DIR"
 
     local origin_url
@@ -56,12 +57,37 @@ clone_or_update_repo() {
     fi
 
     git -C "$REPO_DIR" fetch --prune origin
-  elif [[ -e "$REPO_DIR" ]]; then
-    fail "$REPO_DIR exists but is not a git repo. Move it or remove it first."
-  else
-    log "Cloning Turntable repo into $REPO_DIR"
-    git clone "$REPO_SSH" "$REPO_DIR"
+    return 0
   fi
+
+  # Common broken state: previous script/user created ~/projects/turntable,
+  # then cloned repo inside it as ~/projects/turntable/turntable.
+  if [[ -d "$REPO_DIR/turntable/.git" ]]; then
+    fail "Nested git repo found at $REPO_DIR/turntable, but expected repo root at $REPO_DIR.
+
+Fix manually:
+  mv $REPO_DIR ${REPO_DIR}.nested-backup
+  git clone $REPO_SSH $REPO_DIR
+
+Then rerun this script."
+  fi
+
+  if [[ -e "$REPO_DIR" ]]; then
+    if [[ -z "$(find "$REPO_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
+      log "$REPO_DIR exists but is empty. Removing and cloning fresh."
+      rmdir "$REPO_DIR"
+    else
+      local backup_dir
+      backup_dir="${REPO_DIR}.non-git-backup.$(date +%Y%m%d-%H%M%S)"
+      warn "$REPO_DIR exists but is not a git repo. Moving it to: $backup_dir"
+      mv "$REPO_DIR" "$backup_dir"
+    fi
+  fi
+
+  log "Cloning Turntable repo into $REPO_DIR"
+  git clone "$REPO_SSH" "$REPO_DIR"
+
+  [[ -d "$REPO_DIR/.git" ]] || fail "Clone completed, but $REPO_DIR/.git is missing. Something is wrong with clone path."
 }
 
 setup_frontend() {
@@ -71,6 +97,9 @@ setup_frontend() {
   log "Installing frontend dependencies"
   [[ -d "$REPO_DIR/frontend" ]] || fail "Missing frontend directory: $REPO_DIR/frontend"
   (
+    cd "$REPO_DIR"
+    cp .env.sample .env
+
     cd "$REPO_DIR/frontend"
     mise exec "node@${NODE_VERSION}" -- npm install
   )
@@ -162,6 +191,9 @@ print_next_steps() {
 Done.
 
 Useful checks:
+
+  cd ~/projects/turntable
+  git status --short --branch
 
   cd ~/projects/turntable/backend
   docker compose ps
