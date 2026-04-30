@@ -1,0 +1,6 @@
+#!/bin/bash
+# Yazi Installation Script
+
+sudo pacman -S yazi ffmpeg 7zip jq poppler fd ripgrep fzf zoxide resvg imagemagick
+
+echo "Yazi installation complete!"
