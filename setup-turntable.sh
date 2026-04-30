@@ -4,7 +4,8 @@ set -Eeuo pipefail
 # setup-turntable.sh
 # Idempotent local setup for Turntable repo.
 # Assumes SSH/GitHub auth already works.
-# Does NOT start docker-compose; keep that in your separate Docker script.
+# Assumes Docker engine + Compose are already installed by a separate system script.
+# Starts this project's containers from backend/docker-compose.yml.
 
 REPO_SSH="git@github.com:turntabletickets/turntable.git"
 REPO_DIR="${HOME}/projects/turntable"
@@ -13,8 +14,31 @@ HOSTS_LINE="127.0.0.1 laughfactory.turntabletix jazztx.turntabletix chucklehut.t
 
 log() { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\n\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
-fail() { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+fail() {
+  printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2
+  exit 1
+}
 need_cmd() { command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"; }
+
+compose_cmd() {
+  if docker compose version >/dev/null 2>&1; then
+    printf 'docker compose'
+  elif command -v docker-compose >/dev/null 2>&1; then
+    printf 'docker-compose'
+  else
+    fail "Missing Docker Compose. Install Docker Compose plugin or legacy docker-compose first."
+  fi
+}
+
+check_docker_ready() {
+  need_cmd docker
+
+  if ! docker info >/dev/null 2>&1; then
+    fail "Docker is installed but daemon is not reachable. Start Docker and ensure your user can access it."
+  fi
+
+  compose_cmd >/dev/null
+}
 
 clone_or_update_repo() {
   mkdir -p "$(dirname "$REPO_DIR")"
@@ -57,7 +81,7 @@ setup_backend_env() {
   [[ -d "$REPO_DIR/backend" ]] || fail "Missing backend directory: $REPO_DIR/backend"
 
   (
-    cd "$REPO_DIR"
+    cd "$REPO_DIR/backend"
 
     if [[ -f ".env" ]]; then
       log ".env already exists. Keeping it."
@@ -92,13 +116,28 @@ ensure_hosts_entry() {
   log "Added hosts entry."
 }
 
+setup_project_containers() {
+  log "Starting Turntable backend containers"
+  [[ -f "$REPO_DIR/backend/docker-compose.yml" ]] || fail "Missing compose file: $REPO_DIR/backend/docker-compose.yml"
+
+  (
+    cd "$REPO_DIR/backend"
+
+    local compose
+    compose="$(compose_cmd)"
+
+    # shellcheck disable=SC2086 # compose is intentionally split: "docker compose" or "docker-compose".
+    $compose up -d
+  )
+}
+
 run_backend_db_steps() {
   log "Applying migrations"
   (
-    cd "$REPO_DIR"
+    cd "$REPO_DIR/backend"
     if ! uv run manage.py migrate; then
-      warn "Migrations failed. Most common cause: database containers are not running yet."
-      warn "Run your Docker setup script, then rerun this script. Completed steps are safe."
+      warn "Migrations failed. Most common cause: database containers are not ready yet."
+      warn "Check containers with: cd $REPO_DIR/backend && docker compose ps"
       return 0
     fi
 
@@ -121,6 +160,11 @@ print_next_steps() {
   cat <<'NEXTEOF'
 
 Done.
+
+Useful checks:
+
+  cd ~/projects/turntable/backend
+  docker compose ps
 
 Next commands, usually in separate terminals:
 
@@ -151,11 +195,13 @@ main() {
   need_cmd mise
   need_cmd uv
   need_cmd sudo
+  check_docker_ready
 
   clone_or_update_repo
   setup_frontend
   setup_backend_env
   ensure_hosts_entry
+  setup_project_containers
   run_backend_db_steps
   print_next_steps
 }
