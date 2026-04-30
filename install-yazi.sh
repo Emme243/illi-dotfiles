@@ -179,8 +179,8 @@ patch_matugen_config() {
   cat >> "$tmp" <<EOF
 
 [templates.yazi]
-input_path = "$YAZI_TEMPLATE"
-output_path = "$YAZI_DIR/theme.toml"
+input_path = "~/.config/matugen/templates/yazi-theme.toml"
+output_path = "~/.config/yazi/theme.toml"
 EOF
 
   mv "$tmp" "$MATUGEN_CONFIG"
