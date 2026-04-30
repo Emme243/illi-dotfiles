@@ -3,4 +3,4 @@
 
 sudo pacman -S fastfetch
 
-echo "Fastfetch installation complete!
+echo "Fastfetch installation complete!"
