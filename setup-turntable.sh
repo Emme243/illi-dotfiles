@@ -227,6 +227,7 @@ main() {
   need_cmd mise
   need_cmd uv
   need_cmd sudo
+  need_cmd postgresql-libs
   check_docker_ready
 
   clone_or_update_repo
