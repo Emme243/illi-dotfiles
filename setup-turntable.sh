@@ -42,6 +42,8 @@ check_docker_ready() {
 }
 
 clone_or_update_repo() {
+  sudo pacman -S postgresql-libs
+
   mkdir -p "$PROJECTS_DIR"
 
   if [[ -d "$REPO_DIR/.git" ]]; then
@@ -227,7 +229,6 @@ main() {
   need_cmd mise
   need_cmd uv
   need_cmd sudo
-  need_cmd postgresql-libs
   check_docker_ready
 
   clone_or_update_repo
